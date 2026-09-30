@@ -17,12 +17,12 @@ END $$;
 CREATE TABLE IF NOT EXISTS stl_members (
     st_id BIGSERIAL PRIMARY KEY,
     discord_id BIGINT NOT NULL UNIQUE,
-    stl_nation VARCHAR(40) DEFAULT '',
-    hzn_nation VARCHAR(40) DEFAULT '',
-    status VARCHAR(10) DEFAULT 'voyager'
+    stl_nation VARCHAR(40) DEFAULT '' UNIQUE,
+    hzn_nation VARCHAR(40) DEFAULT '' UNIQUE,
+    status VARCHAR(10) DEFAULT 'VOYAGER'
 );
 
-ALTER TABLE stl_members ADD COLUMN IF NOT EXISTS status VARCHAR(10) DEFAULT 'voyager';
+ALTER TABLE stl_members ADD COLUMN IF NOT EXISTS status VARCHAR(10) DEFAULT 'VOYAGER';
 
 CREATE TABLE IF NOT EXISTS bot_settings (
     key TEXT PRIMARY KEY,

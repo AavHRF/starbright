@@ -3,11 +3,18 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
+from enum import StrEnum
+
 import asyncpg
 
 if TYPE_CHECKING:
     from core.database import Database
 
+class StarbornStatus(StrEnum):
+    VOYAGER = 'VOYAGER'
+    ENVOY = 'ENVOY'
+    STARGAZER = 'STARGAZER'
+    STARBORN = 'STARBORN'
 
 @dataclass
 class Starborn:
@@ -17,7 +24,7 @@ class Starborn:
     discord_id: int
     stl_nation: str = ""
     hzn_nation: str = ""
-    status: str = "voyager"
+    status: StarbornStatus = StarbornStatus.VOYAGER
 
     @classmethod
     def _from_record(cls, record: asyncpg.Record) -> "Starborn":
@@ -30,29 +37,30 @@ class Starborn:
             discord_id=record["discord_id"],
             stl_nation=record["stl_nation"],
             hzn_nation=record["hzn_nation"],
-            status=record["status"],
+            status=StarbornStatus[record["status"]],
         )
 
     @classmethod
     async def create(
-        cls, db: "Database", discord_id: int, stl_nation: str = "", hzn_nation: str = ""
-    ) -> "Starborn":
-        """Insert a new member record, with the default status, and return it.
+        cls, db: "Database", discord_id: int, stl_nation: str = "", hzn_nation: str = "", status: StarbornStatus = StarbornStatus.VOYAGER) -> "Starborn":
+        """Insert a new member record and return it.
         :param db: core Database wrapper
         :param discord_id: Discord user ID of the applicant
         :param stl_nation: nation name in Starlight, if any
         :param hzn_nation: nation name in Horizon, if any
+        :param status: status of the member
         :return: the newly created Starborn instance
         """
         record = await db.fetchrow(
             """
-            INSERT INTO stl_members (discord_id, stl_nation, hzn_nation)
-            VALUES ($1, $2, $3)
+            INSERT INTO stl_members (discord_id, stl_nation, hzn_nation, status)
+            VALUES ($1, $2, $3, $4)
             RETURNING st_id, discord_id, stl_nation, hzn_nation, status
             """,
             discord_id,
             stl_nation,
             hzn_nation,
+            status
         )
         return cls._from_record(record)
 
@@ -77,6 +85,34 @@ class Starborn:
         """
         record = await db.fetchrow(
             "SELECT * FROM stl_members WHERE discord_id = $1", discord_id
+        )
+        return cls._from_record(record) if record else None
+
+    @classmethod
+    async def get_by_stl_nation(
+        cls, db: "Database", stl_nation: str
+    ) -> Optional["Starborn"]:
+        """Fetch a member record by Starlight nation.
+        :param db: core Database wrapper
+        :param stl_nation: Starlight nation to look up
+        :return: matching Starborn instance, or None
+        """
+        record = await db.fetchrow(
+            "SELECT * FROM stl_members WHERE stl_nation = $1", stl_nation
+        )
+        return cls._from_record(record) if record else None
+
+    @classmethod
+    async def get_by_hzn_nation(
+        cls, db: "Database", hzn_nation: str
+    ) -> Optional["Starborn"]:
+        """Fetch a member record by Horizon nation.
+        :param db: core Database wrapper
+        :param stl_nation: Horizon nation to look up
+        :return: matching Starborn instance, or None
+        """
+        record = await db.fetchrow(
+            "SELECT * FROM stl_members WHERE hzn_nation = $1", hzn_nation
         )
         return cls._from_record(record) if record else None
 
