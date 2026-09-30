@@ -10,7 +10,6 @@ import asyncpg
 if TYPE_CHECKING:
     from core.database import Database
 
-
 class StarbornStatus(StrEnum):
     VOYAGER = 'voyager'
     ENVOY = 'envoy'
@@ -86,6 +85,34 @@ class Starborn:
         """
         record = await db.fetchrow(
             "SELECT * FROM stl_members WHERE discord_id = $1", discord_id
+        )
+        return cls._from_record(record) if record else None
+
+    @classmethod
+    async def get_by_stl_nation(
+        cls, db: "Database", stl_nation: str
+    ) -> Optional["Starborn"]:
+        """Fetch a member record by Starlight nation.
+        :param db: core Database wrapper
+        :param stl_nation: Starlight nation to look up
+        :return: matching Starborn instance, or None
+        """
+        record = await db.fetchrow(
+            "SELECT * FROM stl_members WHERE stl_nation = $1", stl_nation
+        )
+        return cls._from_record(record) if record else None
+
+    @classmethod
+    async def get_by_hzn_nation(
+        cls, db: "Database", hzn_nation: str
+    ) -> Optional["Starborn"]:
+        """Fetch a member record by Horizon nation.
+        :param db: core Database wrapper
+        :param stl_nation: Horizon nation to look up
+        :return: matching Starborn instance, or None
+        """
+        record = await db.fetchrow(
+            "SELECT * FROM stl_members WHERE hzn_nation = $1", hzn_nation
         )
         return cls._from_record(record) if record else None
 
