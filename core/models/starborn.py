@@ -11,10 +11,10 @@ if TYPE_CHECKING:
     from core.database import Database
 
 class StarbornStatus(StrEnum):
-    VOYAGER = 'voyager'
-    ENVOY = 'envoy'
-    STARGAZER = 'stargazer'
-    STARBORN = 'starborn'
+    VOYAGER = 'VOYAGER'
+    ENVOY = 'ENVOY'
+    STARGAZER = 'STARGAZER'
+    STARBORN = 'STARBORN'
 
 @dataclass
 class Starborn:
