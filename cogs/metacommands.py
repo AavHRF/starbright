@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+import asyncpg
 import discord
 from discord import app_commands
 from discord.ext import commands, tasks
@@ -102,9 +103,17 @@ class MetaCommands(commands.Cog):
         """
         self.bot = bot
         self._running_jobs: dict[int, asyncio.Task[None]] = {}
+        # source channel ID -> the message triggers watching it. Each list is replaced rather than mutated,
+        # so an on_message call already iterating one is unaffected by a trigger being added or removed.
+        self._message_triggers: dict[int, list[asyncpg.Record]] = {}
 
     async def cog_load(self) -> None:
-        """Start the background job poller once the cog is added."""
+        """Cache the message triggers and start the background job poller once the cog is added."""
+        rows = await self.bot.db.fetch(
+            "SELECT * FROM meta_triggers WHERE event = 'message'"
+        )
+        for row in rows:
+            self._message_triggers.setdefault(row["source_channel_id"], []).append(row)
         self._poll_jobs.start()
 
     async def cog_unload(self) -> None:
@@ -497,7 +506,11 @@ class MetaCommands(commands.Cog):
         mistaken for orphaned (and deleted) just because the bot hasn't finished starting up.
         """
         await self.bot.wait_until_ready()
-        await self._backfill_guild_ids()
+        # An error escaping before_loop would stop the poller for good, so the backfill must not raise.
+        try:
+            await self._backfill_guild_ids()
+        except Exception:
+            logger.exception("Could not backfill guild IDs; will retry on next startup")
 
     async def _backfill_guild_ids(self) -> None:
         """Fill in guild_id for jobs/triggers created before that column existed, resolved from their channel."""
@@ -626,7 +639,7 @@ class MetaCommands(commands.Cog):
 
         row = await self.bot.db.fetchrow(
             "INSERT INTO meta_triggers (event, chain, guild_id, channel_id, created_by, source_channel_id, contains) "
-            "VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id",
+            "VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *",
             event,
             chain,
             interaction.guild.id,
@@ -635,6 +648,9 @@ class MetaCommands(commands.Cog):
             source_channel.id if source_channel else None,
             contains,
         )
+        if event == "message":
+            watching = self._message_triggers.get(source_channel.id, [])
+            self._message_triggers[source_channel.id] = [*watching, row]
         await interaction.response.send_message(
             f"Trigger `#{row['id']}` created for `{event}`.", ephemeral=True
         )
@@ -669,15 +685,28 @@ class MetaCommands(commands.Cog):
         :param interaction: the command invocation interaction
         :param id: the trigger's ID, as shown by /trigger list
         """
-        result = await self.bot.db.execute(
-            "DELETE FROM meta_triggers WHERE id = $1", id
+        row = await self.bot.db.fetchrow(
+            "DELETE FROM meta_triggers WHERE id = $1 RETURNING event, source_channel_id",
+            id,
         )
-        if result == "DELETE 0":
+        if row is None:
             await interaction.response.send_message(
                 f"No trigger with ID {id}.", ephemeral=True
             )
-        else:
-            await interaction.response.send_message("Removed.", ephemeral=True)
+            return
+
+        if row["event"] == "message":
+            channel_id = row["source_channel_id"]
+            remaining = [
+                trigger
+                for trigger in self._message_triggers.get(channel_id, [])
+                if trigger["id"] != id
+            ]
+            if remaining:
+                self._message_triggers[channel_id] = remaining
+            else:
+                self._message_triggers.pop(channel_id, None)
+        await interaction.response.send_message("Removed.", ephemeral=True)
 
     async def _fire_triggers(self, event: str, guild: discord.Guild) -> None:
         """Run every trigger registered for an event in this guild, acting as each trigger's creator.
@@ -718,11 +747,7 @@ class MetaCommands(commands.Cog):
         if message.author.bot or message.guild is None:
             return
 
-        rows = await self.bot.db.fetch(
-            "SELECT * FROM meta_triggers WHERE event = 'message' AND source_channel_id = $1",
-            message.channel.id,
-        )
-        for row in rows:
+        for row in self._message_triggers.get(message.channel.id, []):
             if (
                 row["contains"]
                 and row["contains"].lower() not in message.content.lower()

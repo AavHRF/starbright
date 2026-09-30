@@ -11,6 +11,7 @@ from core.config import Config
 from core.database import Database
 from core.permissions import InsufficientTier, PermissionRegistry
 from core.settings import SettingsRegistry
+from core.sse import SseFeed
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,7 @@ class StarbrightBot(commands.Bot):
         self.settings = SettingsRegistry(self.db)
         self.permissions = PermissionRegistry(self.settings)
         self.actions = ActionRegistry()
+        self.sse = SseFeed(self.db, config.ns_user_agent, self.settings)
         self.tree.on_error = self._on_app_command_error
 
     async def setup_hook(self) -> None:
@@ -42,6 +44,8 @@ class StarbrightBot(commands.Bot):
         await self.api.start()
         await self._load_cogs()
         await self.settings.load()
+        # Started last so every cog has subscribed before the first event is delivered.
+        await self.sse.start()
         await self.tree.sync()
 
     async def _on_app_command_error(
@@ -72,6 +76,7 @@ class StarbrightBot(commands.Bot):
             logger.info("Loaded cog: %s", path.stem)
 
     async def close(self) -> None:
+        await self.sse.stop()
         await super().close()
         await self.db.close()
         await self.api.close()

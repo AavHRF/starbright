@@ -1,6 +1,7 @@
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, AsyncIterator, Iterable, Optional
 
 import asyncpg
 
@@ -85,3 +86,20 @@ class Database:
         """
         async with self.pool.acquire() as conn:
             return await conn.fetchval(query, *args)
+
+    async def executemany(self, query: str, args: Iterable[Iterable[Any]]) -> None:
+        """Run one statement once per row of arguments, in a single round trip.
+        :param query: SQL statement, with $1/$2/... placeholders
+        :param args: one sequence of positional values per execution
+        """
+        async with self.pool.acquire() as conn:
+            await conn.executemany(query, args)
+
+    @asynccontextmanager
+    async def transaction(self) -> AsyncIterator[asyncpg.Connection]:
+        """Open a transaction on a dedicated connection, committing on success and rolling back on error.
+        :return: the connection to run the transaction's statements on
+        """
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                yield conn

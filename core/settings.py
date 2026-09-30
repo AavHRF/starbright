@@ -2,11 +2,24 @@ from __future__ import annotations
 
 import enum
 from dataclasses import dataclass
-from typing import Optional, Union
+from typing import TYPE_CHECKING, Callable, Optional, Union
 
 from core.database import Database
 
+if TYPE_CHECKING:
+    import discord
+
 SettingValue = Union[bool, int, float, str, list[int], None]
+
+# Renders a preview of what a category's settings produce: given the member viewing it and a getter that
+# returns each setting's value (with any pending, unsaved change applied), return the items to display.
+PreviewBuilder = Callable[
+    ["discord.Member", Callable[[str], SettingValue]], list["discord.ui.Item"]
+]
+
+# Builds a custom settings screen for a category whose settings don't fit the one-value-per-key model,
+# given the interaction that opened it.
+PageFactory = Callable[["discord.Interaction"], "discord.ui.LayoutView"]
 
 
 class SettingType(enum.Enum):
@@ -45,6 +58,12 @@ class SettingDefinition:
     default: SettingValue = None
     choices: Optional[list[str]] = None
     min_tier: Optional[int] = None
+    # Whether the setting can be cleared back to None (an empty modal submission, or an empty picker).
+    optional: bool = False
+    # Whether a STRING setting is edited with a multi-line text box.
+    multiline: bool = False
+    # Checks and cleans up an entered value, raising ValueError with a user-facing message if it's invalid.
+    normalize: Optional[Callable[[SettingValue], SettingValue]] = None
 
     def cast(self, raw: str) -> SettingValue:
         """Cast a raw string pulled from the database to this setting's Python type.
@@ -85,6 +104,8 @@ class SettingsRegistry:
         self._db = db
         self._definitions: dict[str, SettingDefinition] = {}
         self._cache: dict[str, SettingValue] = {}
+        self._previews: dict[str, PreviewBuilder] = {}
+        self._pages: dict[str, PageFactory] = {}
 
     def register(self, definition: SettingDefinition) -> None:
         """Register a setting so it is persisted and shown in the settings UI.
@@ -97,6 +118,36 @@ class SettingsRegistry:
                 f"setting {definition.key!r} is a CHOICE type but has no choices"
             )
         self._definitions[definition.key] = definition
+
+    def register_preview(self, category: str, builder: PreviewBuilder) -> None:
+        """Add a Preview button to a category's settings screen, showing what its settings produce.
+        :param category: the category to add the preview to
+        :param builder: renders the preview for a given set of values
+        """
+        self._previews[category] = builder
+
+    def preview_for(self, category: str) -> Optional[PreviewBuilder]:
+        """Return the preview builder registered for a category, if any.
+        :param category: category name
+        :return: the category's preview builder, or None if it has no preview
+        """
+        return self._previews.get(category)
+
+    def register_page(self, category: str, factory: PageFactory) -> None:
+        """List a custom screen in the settings menu, for a category the standard screen can't represent.
+        :param category: the category name to list it under
+        :param factory: builds the screen when it's opened
+        """
+        if category in self._pages:
+            raise ValueError(f"settings page already registered: {category}")
+        self._pages[category] = factory
+
+    def page_for(self, category: str) -> Optional[PageFactory]:
+        """Return the custom screen registered for a category, if any.
+        :param category: category name
+        :return: the category's page factory, or None if it uses the standard screen
+        """
+        return self._pages.get(category)
 
     async def load(self) -> None:
         """Populate the in-memory cache from the database, filling in defaults for unset keys."""
@@ -143,7 +194,7 @@ class SettingsRegistry:
         """List the distinct categories settings are grouped under.
         :return: sorted category names
         """
-        return sorted({d.category for d in self._definitions.values()})
+        return sorted({d.category for d in self._definitions.values()} | set(self._pages))
 
     def by_category(self, category: str) -> list[SettingDefinition]:
         """List the settings registered under one category.
