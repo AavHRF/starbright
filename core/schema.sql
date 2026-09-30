@@ -17,8 +17,8 @@ END $$;
 CREATE TABLE IF NOT EXISTS stl_members (
     st_id BIGSERIAL PRIMARY KEY,
     discord_id BIGINT NOT NULL UNIQUE,
-    stl_nation VARCHAR(40) DEFAULT '',
-    hzn_nation VARCHAR(40) DEFAULT '',
+    stl_nation VARCHAR(40) DEFAULT '' UNIQUE,
+    hzn_nation VARCHAR(40) DEFAULT '' UNIQUE,
     status VARCHAR(10) DEFAULT 'VOYAGER'
 );
 
