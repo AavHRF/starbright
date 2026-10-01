@@ -93,7 +93,7 @@ class Roster(commands.Cog):
             return
 
         embed = discord.Embed(
-            title = "__**Member Record**__"
+            title = "__**Member Record**__",
             description = f"""**ID:** {record.st_id}
             **Discord account:** <@{record.discord_id}>
             **Starlight nation:** {record.stl_nation}
