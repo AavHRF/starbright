@@ -90,13 +90,17 @@ class Roster(commands.Cog):
             )
             return
 
-        await interaction.response.send_message(
-            f"""**__Member Record:__**
-            **Discord account:** <@{interaction.guild.get_member(record.discord_id)}>
+        embed = discord.Embed(
+            title = "__**Member Record**__"
+            description = f"""**Discord account:** <@{record.discord_id}>
             **Starlight nation:** {record.stl_nation}
             **Horizon nation:** {record.hzn_nation}
-            **Status:** {record.status}
-            """ #TODO: convert StarbornStatus to a nicer format
+            **Status:** {str(record.status).title()}
+            """
+        )
+
+        await interaction.response.send_message(
+            embed = embed
         )
 
 async def setup(bot: StarbrightBot) -> None:
