@@ -62,17 +62,19 @@ class Roster(commands.Cog):
 
     @roster_group.command(
         name="fetch",
-        description="Fetch a member from the roster by nation or Discord account.",
+        description="Fetch a member from the roster by internal ID, nation, or Discord account.",
     )
     @app_commands.guild_only()
-    async def fetch(self, interaction: discord.Interaction, discord_account: discord.Member | None, stl_nation: str | None, hzn_nation: str | None):
+    async def fetch(self, interaction: discord.Interaction, id: int | None, discord_account: discord.Member | None, stl_nation: str | None, hzn_nation: str | None):
         if not self._can_roster(interaction.user):
             await interaction.response.send_message(
                 "You aren't allowed to use /roster commands.", ephemeral=True
             )
             return
 
-        if discord_account is not None:
+        if id is not None:
+            record = await Starborn.get_by_id(self.bot.db, id)
+        elif discord_account is not None:
             record = await Starborn.get_by_discord_id(self.bot.db, discord_account.id)
         elif stl_nation is not None:
             record = await Starborn.get_by_stl_nation(self.bot.db, stl_nation)
@@ -92,7 +94,8 @@ class Roster(commands.Cog):
 
         embed = discord.Embed(
             title = "__**Member Record**__"
-            description = f"""**Discord account:** <@{record.discord_id}>
+            description = f"""**ID:** {record.st_id}
+            **Discord account:** <@{record.discord_id}>
             **Starlight nation:** {record.stl_nation}
             **Horizon nation:** {record.hzn_nation}
             **Status:** {str(record.status).title()}
@@ -101,6 +104,32 @@ class Roster(commands.Cog):
 
         await interaction.response.send_message(
             embed = embed
+        )
+
+    @roster_group.command(
+        name="amend",
+        description="Amend a member on the roster. Nation fields must be provided or they will be blanked.",
+    )
+    @app_commands.guild_only()
+    async def amend(self, interaction: discord.Interaction, id: int, discord_account: discord.Member | None, stl_nation: str | None, hzn_nation: str | None, status: StarbornStatus | None):
+        if not self._can_roster(interaction.user):
+            await interaction.response.send_message(
+                "You aren't allowed to use /roster commands.", ephemeral=True
+            )
+            return
+        member = await Starborn.get_by_id(self.bot.db, id)
+
+        if discord_account is not None:
+            member.discord_id = discord_account.id
+        if status is not None:
+            member.status = status
+        member.stl_nation = stl_nation
+        member.hzn_nation = hzn_nation
+
+        await member.save(self.bot.db)
+
+        await interaction.response.send_message(
+            "Member successfully amended.", ephemeral=True
         )
 
 async def setup(bot: StarbrightBot) -> None:
