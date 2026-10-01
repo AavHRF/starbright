@@ -128,8 +128,18 @@ class Roster(commands.Cog):
 
         await member.save(self.bot.db)
 
+        embed = discord.Embed(
+            title = "__**Amended Member Record**__",
+            description = f"""**ID:** {record.st_id}
+            **Discord account:** <@{record.discord_id}>
+            **Starlight nation:** {record.stl_nation}
+            **Horizon nation:** {record.hzn_nation}
+            **Status:** {str(record.status).title()}
+            """
+        )
+
         await interaction.response.send_message(
-            "Member successfully amended.", ephemeral=True
+            "Member successfully amended.", embed=embed, ephemeral=True
         )
 
 async def setup(bot: StarbrightBot) -> None:
